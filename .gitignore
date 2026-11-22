@@ -1,0 +1,6 @@
+**/bin
+**/obj
+/logs
+.idea/
+.env
+appsettings.Development.json
