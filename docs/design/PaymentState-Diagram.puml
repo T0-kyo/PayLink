@@ -1,0 +1,48 @@
+@startuml PayLink_Payment_State_Diagram
+!theme plain
+hide empty description
+skinparam state {
+  BackgroundColor #F8F9FA
+  BorderColor #333333
+  FontSize 14
+}
+skinparam arrow {
+  Color #333333
+  FontSize 12
+}
+
+title PayLink — Payment State Diagram
+
+' Initial state
+[*] --> Initiated
+
+' Transitions from the brief
+Initiated --> FundsHeld : Fraud checks pass\nand wallet has enough funds
+Initiated --> Rejected : Fraud check fails or\nfunds are insufficient
+
+FundsHeld --> SentToBiller : Request sent to biller
+
+SentToBiller --> Completed : Biller confirms
+SentToBiller --> Failed : Biller refuses
+SentToBiller --> Unknown : No answer within the timeout
+
+Unknown --> Completed : Biller later confirms\n(callback, retry or settlement file)
+Unknown --> Failed : Biller later refuses, or\nreconciliation finds no payment
+
+Failed --> Refunded : Hold released to the wallet
+
+' Final states (brief states Completed, Rejected, and Refunded are final)
+Completed --> [*]
+Rejected --> [*]
+Refunded --> [*]
+
+' Business Rule Note
+note right of Unknown
+  **Crucial Business Rule:**
+  A payment in Unknown is NEVER refunded automatically.
+  It must transition to Failed first.
+  Money is only returned once the system is sure 
+  the biller did not receive it.
+end note
+
+@enduml

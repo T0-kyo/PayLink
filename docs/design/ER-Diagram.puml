@@ -1,0 +1,370 @@
+@startuml PayLink_ER_Diagram
+!theme plain
+hide circle
+skinparam linetype ortho
+skinparam entity {
+  BackgroundColor #F8F9FA
+  BorderColor #333333
+  FontSize 12
+}
+
+title PayLink — Entity Relationship Diagram (Phase 1)
+
+' ============================================================
+' Module 1 — Accounts & Wallet
+' ============================================================
+
+entity "ACCOUNTS" as accounts {
+  * id : uuid <<PK>>
+  --
+  * role : varchar
+  * full_name : varchar
+  * email : varchar <<UK>>
+  * phone : varchar <<UK>>
+  * password_hash : varchar
+  * verification_level : varchar
+    verified_at : timestamptz
+    agent_profile : jsonb
+  * status : varchar
+    block_reason : varchar
+    blocked_by : uuid <<FK>>
+    blocked_at : timestamptz
+    velocity_blocked_until : timestamptz
+  * created_at : timestamptz
+  * updated_at : timestamptz
+}
+
+entity "WALLETS" as wallets {
+  * id : uuid <<PK>>
+  --
+  * account_id : uuid <<FK>>
+  * status : varchar
+  * created_at : timestamptz
+  * updated_at : timestamptz
+}
+
+entity "LEDGER_ENTRIES" as ledger {
+  * id : uuid <<PK>>
+  --
+    wallet_id : uuid <<FK>>
+    system_account : varchar
+    bucket : varchar
+  * amount : decimal
+  * entry_type : varchar
+  * reference_type : varchar
+  * reference_id : uuid
+    description : varchar
+  * created_at : timestamptz
+}
+
+' ============================================================
+' Module 2 — Biller Catalog
+' ============================================================
+
+entity "BILLERS" as billers {
+  * id : uuid <<PK>>
+  --
+  * code : varchar <<UK>>
+  * name : varchar
+  * protocol : varchar
+  * api_version : varchar
+  * base_url : varchar
+  * timeout_seconds : int
+  * active : boolean
+  * created_at : timestamptz
+  * updated_at : timestamptz
+}
+
+entity "BILLER_SERVICES" as biller_services {
+  * id : uuid <<PK>>
+  --
+  * biller_id : uuid <<FK>>
+  * code : varchar
+  * name : varchar
+  * min_amount : decimal
+  * max_amount : decimal
+  * required_fields : jsonb
+  * active : boolean
+  * created_at : timestamptz
+  * updated_at : timestamptz
+}
+
+' ============================================================
+' Module 3 — Payment Processing
+' ============================================================
+
+entity "PAYMENTS" as payments {
+  * id : uuid <<PK>>
+  --
+  * wallet_id : uuid <<FK>>
+  * biller_service_id : uuid <<FK>>
+    agent_account_id : uuid <<FK>>
+  * channel : varchar
+  * state : varchar
+  * bill_amount : decimal
+  * fee_amount : decimal
+  * total_amount : decimal
+    fee_rule_id : uuid <<FK>>
+  * biller_reference : varchar
+    inquiry_reference : varchar
+    input_values : jsonb
+    sent_at : timestamptz
+    completed_at : timestamptz
+    failed_at : timestamptz
+    unknown_since : timestamptz
+  * retry_count : int
+    next_retry_at : timestamptz
+    failure_code : varchar
+    failure_message : varchar
+  * created_at : timestamptz
+  * updated_at : timestamptz
+}
+
+entity "IDEMPOTENCY_KEYS" as idempotency {
+  * id : uuid <<PK>>
+  --
+    account_id : uuid <<FK>>
+  * scope : varchar
+  * operation : varchar
+  * key : varchar
+  * request_hash : varchar
+    response_status : varchar
+    response_body : jsonb
+    result_ref : uuid
+  * created_at : timestamptz
+  * expires_at : timestamptz
+}
+
+entity "LIMIT_RULES" as limit_rules {
+  * id : uuid <<PK>>
+  --
+  * code : varchar
+    verification_level : varchar
+  * value : decimal
+  * unit : varchar
+  * effective_from : timestamptz
+    effective_to : timestamptz
+  * active : boolean
+  * created_at : timestamptz
+  * updated_at : timestamptz
+}
+
+' ============================================================
+' Module 5 — Fees & Commissions
+' ============================================================
+
+entity "FEE_RULES" as fee_rules {
+  * id : uuid <<PK>>
+  --
+  * name : varchar
+  * scope_type : varchar
+    biller_id : uuid <<FK>>
+    service_id : uuid <<FK>>
+  * fee_type : varchar
+  * params : jsonb
+  * priority : int
+  * is_promotion : boolean
+  * effective_from : timestamptz
+    effective_to : timestamptz
+  * active : boolean
+  * created_at : timestamptz
+  * updated_at : timestamptz
+}
+
+entity "COMMISSIONS" as commissions {
+  * id : uuid <<PK>>
+  --
+  * payment_id : uuid <<FK>>
+  * agent_account_id : uuid <<FK>>
+  * agent_wallet_id : uuid <<FK>>
+  * rate : decimal
+  * fee_base : decimal
+  * amount : decimal
+  * status : varchar
+    credited_ledger_entry_id : uuid <<FK>>
+  * created_at : timestamptz
+  * updated_at : timestamptz
+}
+
+' ============================================================
+' Module 6 — Notifications
+' ============================================================
+
+entity "NOTIFICATIONS" as notifications {
+  * id : uuid <<PK>>
+  --
+  * account_id : uuid <<FK>>
+    payment_id : uuid <<FK>>
+  * channel : varchar
+  * template_code : varchar
+  * trigger : varchar
+    payload : jsonb
+  * status : varchar
+  * retry_count : int
+    last_error : varchar
+    sent_at : timestamptz
+    delivered_at : timestamptz
+  * created_at : timestamptz
+  * updated_at : timestamptz
+}
+
+' ============================================================
+' Module 7 — Audit
+' ============================================================
+
+entity "AUDIT_LOGS" as audit {
+  * id : uuid <<PK>>
+  --
+    actor_account_id : uuid <<FK>>
+  * actor_role : varchar
+  * action : varchar
+  * entity_type : varchar
+  * entity_id : uuid
+    before_state : jsonb
+    after_state : jsonb
+    reason : varchar
+  * occurred_at : timestamptz
+}
+
+' ============================================================
+' Wallet Operations
+' ============================================================
+
+entity "TOPUPS" as topups {
+  * id : uuid <<PK>>
+  --
+  * wallet_id : uuid <<FK>>
+  * amount : decimal
+  * method : varchar
+  * status : varchar
+    external_ref : varchar
+  * created_at : timestamptz
+    completed_at : timestamptz
+}
+
+' ============================================================
+' Refunds
+' ============================================================
+
+entity "REFUND_REQUESTS" as refund_requests {
+  * id : uuid <<PK>>
+  --
+  * payment_id : uuid <<FK>>
+  * requested_by : uuid <<FK>>
+  * reason : varchar
+  * refund_amount : decimal
+  * status : varchar
+    approved_by : uuid <<FK>>
+    decided_at : timestamptz
+    credited_ledger_entry_id : uuid <<FK>>
+    notes : varchar
+  * created_at : timestamptz
+  * updated_at : timestamptz
+}
+
+' ============================================================
+' Reconciliation
+' ============================================================
+
+entity "SETTLEMENT_FILES" as settlement_files {
+  * id : uuid <<PK>>
+  --
+  * biller_id : uuid <<FK>>
+  * business_date : date
+  * received_at : timestamptz
+  * filename : varchar
+  * content_hash : varchar
+  * storage_path : varchar
+  * status : varchar
+  * created_at : timestamptz
+}
+
+entity "SETTLEMENT_LINES" as settlement_lines {
+  * id : uuid <<PK>>
+  --
+  * settlement_file_id : uuid <<FK>>
+  * biller_reference : varchar
+  * claimed_amount : decimal
+  * claimed_status : varchar
+    raw_row : jsonb
+  * created_at : timestamptz
+}
+
+entity "RECONCILIATION_ITEMS" as recon_items {
+  * id : uuid <<PK>>
+  --
+    settlement_line_id : uuid <<FK>>
+    payment_id : uuid <<FK>>
+  * discrepancy_type : varchar
+  * resolution_status : varchar
+    resolved_by : uuid <<FK>>
+    notes : varchar
+  * created_at : timestamptz
+  * updated_at : timestamptz
+}
+
+' ============================================================
+' Relationships (crow's-foot / IE notation)
+' ============================================================
+
+accounts ||--|| wallets
+accounts ||--o{ payments
+accounts ||--o{ commissions
+accounts ||--o{ notifications
+accounts ||--o{ idempotency
+accounts ||--o{ audit
+accounts ||--o{ refund_requests : requests
+accounts ||--o{ refund_requests : approves
+wallets ||--o{ payments
+wallets ||--o{ ledger
+wallets ||--o{ topups
+billers ||--o{ biller_services
+billers ||--o{ fee_rules
+billers ||--o{ settlement_files
+biller_services ||--o{ payments
+biller_services ||--o{ fee_rules
+payments ||--o{ commissions
+payments ||--o{ notifications
+payments ||--o{ refund_requests
+payments ||--o{ recon_items
+settlement_files ||--o{ settlement_lines
+settlement_lines ||--o| recon_items
+
+' ============================================================
+' Notes and legend
+' ============================================================
+
+note bottom of ledger
+  **Polymorphic reference (not FK):**
+  reference_id → PAYMENT | TOPUP | COMMISSION | REFUND_REQUEST | ADJUSTMENT
+  Enforced by CHECK on reference_type + repository validation.
+end note
+
+note bottom of audit
+  **Polymorphic reference (not FK):**
+  entity_id → any entity (discriminated by entity_type).
+  Payment state history = view WHERE entity_type = 'PAYMENT'.
+end note
+
+legend
+  **All monetary columns:** DECIMAL(14,2), EGP only, signed.
+  **All PKs:** UUIDv7 (time-ordered).
+
+  **Constraints enforced in the migration (not shown as FK):**
+  - WALLETS: UNIQUE(account_id)
+  - LEDGER_ENTRIES: exactly one of wallet_id / system_account set;
+    bucket set iff wallet_id set
+  - IDEMPOTENCY_KEYS: UNIQUE(scope, operation, key)
+  - NOTIFICATIONS: UNIQUE(payment_id, trigger, channel)
+  - REFUND_REQUESTS: UNIQUE(payment_id) WHERE status <> 'rejected'
+  - BILLER_SERVICES: UNIQUE(biller_id, code)
+  - SETTLEMENT_LINES: UNIQUE(settlement_file_id, biller_reference)
+  - LIMIT_RULES: UNIQUE(code, verification_level, effective_from)
+
+  **Key indexes:**
+  - LEDGER_ENTRIES(wallet_id, bucket)
+  - PAYMENTS(state)
+  - AUDIT_LOGS(entity_type, entity_id)
+endlegend
+
+@enduml

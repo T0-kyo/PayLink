@@ -1,0 +1,54 @@
+@startuml RefundFailedPayment_Sequence
+!theme plain
+autonumber
+skinparam SequenceMessageAlign center
+title PayLink — Sequence Diagram: "Refund a Failed Payment"
+
+actor "System / Scheduler" as Scheduler
+participant "Biller\nAdapter" as Adapter
+participant "Payment Service" as Payment
+participant "Wallet & Ledger" as Wallet
+participant "Audit Log" as Audit
+participant "Notification\nService" as Notif
+actor "Customer" as Customer
+
+note over Scheduler, Adapter : Trigger comes from either a direct biller refusal OR\na retry/reconciliation confirming the biller did not receive it.
+
+== Trigger: Payment fails or is confirmed lost ==
+alt Biller explicitly refused (e.g., AquaCo error)
+    Adapter -> Payment : receiveRefusal(payment_id, error_code)
+else Retry/Reconciliation confirms 'not received'
+    Scheduler -> Payment : resolveUnknownToFailed(payment_id)
+    note right of Scheduler : Only fires after the 3 retries \n(1, 5, 15 mins) or settlement file proves it
+end
+
+activate Payment
+Payment -> Payment : update state: SentToBiller/Unknown -> Failed
+
+== Release the Hold ==
+Payment -> Wallet : releaseFunds(payment_id)
+activate Wallet
+Wallet -> Wallet : SELECT FOR UPDATE (lock wallet row)
+Wallet -> Wallet : Ledger: HELD -352.50, AVAILABLE +352.50
+Wallet --> Payment : Hold Released
+deactivate Wallet
+
+== Finalize State & Audit ==
+Payment -> Payment : update state: Failed -> Refunded (Final)
+Payment -> Audit : log(action: 'payment_refunded', reason: 'Biller failure')
+activate Audit
+Audit --> Payment : Logged
+deactivate Audit
+
+== Notify Customer (Async) ==
+Payment -> Notif : sendFailureSMS(account_id, "Payment failed, 352.50 returned")
+activate Notif
+Notif -> Customer : SMS: "Your payment failed. Funds returned to wallet."
+note right of Notif : Retries 3 times if provider is down\n(Hard Case #5)
+Notif --> Payment : Queued
+deactivate Notif
+
+Payment --> Scheduler : Refund Complete
+deactivate Payment
+
+@enduml

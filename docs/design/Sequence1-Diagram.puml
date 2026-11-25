@@ -1,0 +1,130 @@
+@startuml PayABill_Sequence
+!theme plain
+autonumber
+skinparam SequenceMessageAlign center
+title PayLink — Sequence Diagram: "Pay a Bill"
+
+actor "Customer" as Customer
+participant "Payment Service" as Payment
+participant "Idempotency\nRepository" as Idemp
+participant "Biller\nAdapter" as Adapter
+participant "ElectroCo\n(Mock Biller)" as Biller
+participant "Fee Service" as Fee
+participant "Fraud & Limits\nService" as Fraud
+participant "Wallet & Ledger" as Wallet
+participant "Notification\nService" as Notif
+
+Customer -> Payment : POST /payments (idempotency_key, biller_id, meter_no)
+activate Payment
+
+' Step 1: Idempotency
+Payment -> Idemp : checkKey(account_id, idempotency_key)
+activate Idemp
+alt Key exists (Hard Case #1)
+    Idemp --> Payment : cached response
+    Payment --> Customer : return 200 OK (original result)
+    return 
+else Key is new
+    Idemp --> Payment : OK to proceed
+end
+deactivate Idemp
+
+' Step 2: Bill Inquiry
+Payment -> Adapter : inquireBill(meter_no)
+activate Adapter
+Adapter -> Biller : GET /inquiry (meter_no)
+activate Biller
+Biller --> Adapter : 200 OK { bill_amount: 350.00 EGP }
+deactivate Biller
+Adapter --> Payment : bill_amount = 350.00
+deactivate Adapter
+
+' Step 3: Fee calculation
+Payment -> Fee : calculateFee(biller_id, bill_amount)
+activate Fee
+Fee --> Payment : fee_amount = 2.50 EGP
+deactivate Fee
+Payment -> Payment : total_amount = 352.50 EGP
+
+' Step 4: Fraud Checks
+Payment -> Fraud : checkLimits(account_id, bill_amount)
+activate Fraud
+Fraud --> Payment : Passed (limits & velocity OK)
+deactivate Fraud
+
+' Step 5: Hold the money (Wallet & Ledger)
+Payment -> Wallet : holdFunds(wallet_id, payment_id, 352.50)
+activate Wallet
+Wallet -> Wallet : SELECT FOR UPDATE (lock wallet row)
+Wallet -> Wallet : Check AVAILABLE >= 352.50
+Wallet -> Wallet : Ledger: AVAILABLE -352.50, HELD +352.50
+Wallet --> Payment : FundsHeld
+deactivate Wallet
+
+' Step 6: Call the biller
+Payment -> Payment : update state: FundsHeld -> SentToBiller
+Payment -> Adapter : processPayment(biller_ref, 350.00)
+activate Adapter
+Adapter -> Biller : POST /pay
+activate Biller
+
+' Step 7: Confirmation & Timeout Branches
+alt Biller Confirms (Fast path)
+    Biller --> Adapter : 200 OK { status: "paid" }
+    deactivate Biller
+    Adapter --> Payment : Paid
+    deactivate Adapter
+    
+    Payment -> Wallet : captureFunds(payment_id)
+    activate Wallet
+    Wallet -> Wallet : Ledger: HELD -352.50, BILLER_PAYABLE +350.00, FEE_INCOME +2.50
+    Wallet --> Payment : Captured
+    deactivate Wallet
+    
+    Payment -> Payment : update state: SentToBiller -> Completed
+    Payment -> Notif : sendReceipt(account_id, "Completed")
+    activate Notif
+    Notif --> Payment : Queued
+    deactivate Notif
+    
+    Payment --> Customer : 200 OK { state: "Completed", total: 352.50 }
+
+else Biller Timeout (12 seconds - Hard Case #2)
+    Biller -x Adapter : (No response after 10s)
+    deactivate Biller
+    Adapter --> Payment : Timeout Exception
+    deactivate Adapter
+    
+    Payment -> Payment : update state: SentToBiller -> Unknown
+    Payment -> Notif : sendReceipt(account_id, "Processing")
+    activate Notif
+    Notif --> Payment : Queued
+    deactivate Notif
+    
+    Payment --> Customer : 202 Accepted { state: "Unknown", message: "Processing" }
+    note right of Payment : Scheduled for retry in 1, 5, 15 mins
+
+else Biller Refuses (Hard Case #3)
+    Biller --> Adapter : 400 Bad Request { error: "Invalid meter" }
+    deactivate Biller
+    Adapter --> Payment : Refused
+    deactivate Adapter
+    
+    Payment -> Payment : update state: SentToBiller -> Failed
+    Payment -> Wallet : releaseFunds(payment_id)
+    activate Wallet
+    Wallet -> Wallet : Ledger: HELD -352.50, AVAILABLE +352.50
+    Wallet --> Payment : Released
+    deactivate Wallet
+    
+    Payment -> Payment : update state: Failed -> Refunded
+    Payment -> Notif : sendReceipt(account_id, "Failed & Refunded")
+    activate Notif
+    Notif --> Payment : Queued
+    deactivate Notif
+    
+    Payment --> Customer : 200 OK { state: "Refunded", reason: "Biller refused" }
+end
+
+deactivate Payment
+@enduml
