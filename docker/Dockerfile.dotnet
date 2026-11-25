@@ -1,0 +1,24 @@
+# Stage 1: Build & Publish
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+ARG SERVICE_PATH
+ARG PROJECT_NAME
+WORKDIR /src
+
+COPY ${SERVICE_PATH}/ ./
+RUN dotnet restore ${PROJECT_NAME}/${PROJECT_NAME}.csproj
+RUN dotnet publish ${PROJECT_NAME}/${PROJECT_NAME}.csproj -c Release -o /app/publish --no-restore
+
+# Stage 2: Runtime
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+ARG PROJECT_NAME
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /app/publish .
+
+ENV DLL_NAME="${PROJECT_NAME}.dll"
+ENV ASPNETCORE_URLS=http://+:8080
+EXPOSE 8080
+
+ENTRYPOINT ["sh", "-c", "dotnet $DLL_NAME"]

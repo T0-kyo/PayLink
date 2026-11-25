@@ -1,0 +1,62 @@
+name: PayLink CI Pipeline
+
+on:
+  push:
+    branches: [ main, "**" ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-lint-test:
+    name: Build, Lint & Test (.NET)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore services/paylink-core/PayLink.sln
+
+      - name: Lint code formatting (dotnet format)
+        run: dotnet format services/paylink-core/PayLink.sln --verify-no-changes --no-restore
+
+      - name: Build solution
+        run: dotnet build services/paylink-core/PayLink.sln --configuration Release --no-restore
+
+      - name: Run unit tests
+        run: dotnet test services/paylink-core/PayLink.sln --configuration Release --no-build --verbosity normal
+
+  docker-verify:
+    name: Verify Docker Compose Stack
+    runs-on: ubuntu-latest
+    needs: build-lint-test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build and start Docker Compose stack
+        run: docker compose up -d --build
+
+      - name: Wait for healthchecks & verify API
+        run: |
+          for i in {1..15}; do
+            if curl -sf http://localhost:8080/health; then
+              echo "PayLink Core API is healthy!"
+              exit 0
+            fi
+            echo "Waiting for API to become healthy..."
+            sleep 2
+          done
+          docker compose logs
+          exit 1
+
+      - name: Tear down stack
+        if: always()
+        run: docker compose down -v
