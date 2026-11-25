@@ -118,7 +118,6 @@ class SettlementLine <<Entity>> {
 
 class Money <<Value Object>> {
   +amount: Decimal
-  +currency: Currency
   --
   +add(other: Money): Money
   +subtract(other: Money): Money
@@ -174,13 +173,21 @@ enum AccountRole {
   CUSTOMER
   AGENT
   ADMIN
+  SUPPORT
 }
 
 enum LedgerBucket {
   AVAILABLE
   HELD
+}
+
+enum SystemAccount {
   BILLER_PAYABLE
   FEE_INCOME
+  CARD_IN
+  CASH_IN
+  AGENT_PAYABLE
+  REFUND_EXPENSE
 }
 
 ' ============================================================
@@ -191,7 +198,10 @@ enum LedgerBucket {
 Account "1" --> "1" Wallet : owns >
 Account "1" *-- "1" AgentProfile : has (if agent)
 Account "1" --> "*" TopUp : initiates >
-Wallet "1" --> "*" LedgerEntry : records money movement >
+
+' Ledger Double-Entry Accounting
+Wallet "1" --> "*" LedgerEntry : records movement >
+SystemAccount "1" --> "*" LedgerEntry : records movement >
 
 ' Payments Flow
 Account "1" --> "*" Payment : initiates >
