@@ -1,0 +1,59 @@
+x-dotnet-service: &dotnet-service-template
+  build:
+    context: .
+    dockerfile: docker/Dockerfile.dotnet
+  restart: unless-stopped
+  networks:
+    - paylink-net
+  depends_on:
+    postgres:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+    start_period: 10s
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: paylink-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-paylink}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-paylink_dev_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-paylink_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - paylink-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-paylink} -d ${POSTGRES_DB:-paylink_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  paylink-core:
+    <<: *dotnet-service-template
+    container_name: paylink-core
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dotnet
+      args:
+        SERVICE_PATH: services/paylink-core
+        PROJECT_NAME: PayLink.Api
+    ports:
+      - "${CORE_API_PORT:-8080}:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-paylink_db};Username=${POSTGRES_USER:-paylink};Password=${POSTGRES_PASSWORD:-paylink_dev_secret}"
+
+networks:
+  paylink-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
