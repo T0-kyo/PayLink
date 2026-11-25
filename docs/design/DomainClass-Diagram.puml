@@ -1,0 +1,240 @@
+@startuml PayLink_Domain_Class_Diagram
+!theme plain
+hide circle
+hide empty methods
+skinparam classAttributeIconSize 0
+skinparam linetype polyline
+
+title PayLink — Pure Domain Class Diagram (Problem Space)
+
+' ============================================================
+' 1. Entities (Concepts with identity and lifecycle)
+' ============================================================
+
+class Account <<Entity>> {
+  +id: AccountId
+  +role: AccountRole
+  +verificationLevel: VerificationLevel
+  +status: AccountStatus
+  --
+  +block(reason)
+  +unblock()
+  +isEligibleFor(amount): boolean
+}
+
+class Wallet <<Entity>> {
+  +id: WalletId
+  +status: WalletStatus
+  --
+  +availableBalance(): Money
+  +heldBalance(): Money
+  +reserveFunds(amount: Money)
+  +captureFunds(amount: Money)
+  +releaseFunds(amount: Money)
+}
+
+class LedgerEntry <<Entity>> {
+  +id: LedgerEntryId
+  +amount: Money
+  +bucket: LedgerBucket
+  +type: EntryType
+  +occurredAt: Instant
+}
+
+class Payment <<Entity>> {
+  +id: PaymentId
+  +reference: PaymentReference
+  +amount: Money
+  +fee: Money
+  +total: Money
+  +state: PaymentState
+  +retryCount: int
+  --
+  +transition(event: PaymentEvent)
+  +scheduleRetry()
+}
+
+class TopUp <<Entity>> {
+  +id: TopUpId
+  +amount: Money
+  +method: TopUpMethod
+  +status: TopUpStatus
+  --
+  +complete()
+  +fail(reason)
+}
+
+class RefundRequest <<Entity>> {
+  +id: RefundRequestId
+  +reason: String
+  +status: RefundStatus
+  --
+  +approve(by: Account)
+  +reject(reason)
+}
+
+class Biller <<Entity>> {
+  +id: BillerId
+  +name: String
+  +protocol: Protocol
+  +active: boolean
+}
+
+class BillerService <<Entity>> {
+  +id: BillerServiceId
+  +minAmount: Money
+  +maxAmount: Money
+  +active: boolean
+}
+
+class FeeRule <<Entity>> {
+  +id: FeeRuleId
+  +feeType: FeeType
+  +effectiveFrom: Date
+  +effectiveTo: Date
+  --
+  +isApplicable(payment: Payment): boolean
+}
+
+class Notification <<Entity>> {
+  +id: NotificationId
+  +channel: NotificationChannel
+  +status: NotificationStatus
+  +retryCount: int
+  --
+  +markDelivered()
+  +markUndelivered()
+}
+
+class SettlementLine <<Entity>> {
+  +id: SettlementLineId
+  +claimedAmount: Money
+  +claimedStatus: String
+}
+
+' ============================================================
+' 2. Value Objects (Concepts with no identity)
+' ============================================================
+
+class Money <<Value Object>> {
+  +amount: Decimal
+  +currency: Currency
+  --
+  +add(other: Money): Money
+  +subtract(other: Money): Money
+  +isNegative(): boolean
+}
+
+class BillerInput <<Value Object>> {
+  +fields: Map<String, String>
+}
+
+class FraudDecision <<Value Object>> {
+  +allowed: boolean
+  +reason: String
+}
+
+class AgentProfile <<Value Object>> {
+  +agentCode: String
+  +commissionRate: Decimal
+}
+
+' ============================================================
+' 3. Domain Services (Business logic spanning multiple entities)
+' ============================================================
+
+class FeeCalculator <<Domain Service>> {
+  +calculateFee(payment: Payment, applicableRules: FeeRule[]): Money
+}
+
+class FraudPolicy <<Domain Service>> {
+  +evaluate(account: Account, payment: Payment): FraudDecision
+}
+
+class ReconciliationEngine <<Domain Service>> {
+  +compare(ourPayment: Payment, theirLine: SettlementLine): Discrepancy
+}
+
+' ============================================================
+' 4. Enumerations (Business Vocabularies)
+' ============================================================
+
+enum PaymentState {
+  INITIATED
+  FUNDS_HELD
+  SENT_TO_BILLER
+  COMPLETED
+  FAILED
+  UNKNOWN
+  REJECTED
+  REFUNDED
+}
+
+enum AccountRole {
+  CUSTOMER
+  AGENT
+  ADMIN
+}
+
+enum LedgerBucket {
+  AVAILABLE
+  HELD
+  BILLER_PAYABLE
+  FEE_INCOME
+}
+
+' ============================================================
+' 5. Relationships (Business Rules & Associations)
+' ============================================================
+
+' Identity & Money
+Account "1" --> "1" Wallet : owns >
+Account "1" *-- "1" AgentProfile : has (if agent)
+Account "1" --> "*" TopUp : initiates >
+Wallet "1" --> "*" LedgerEntry : records money movement >
+
+' Payments Flow
+Account "1" --> "*" Payment : initiates >
+Wallet "1" --> "*" Payment : funds >
+Payment "1" *-- "1" BillerInput : requires >
+Payment "1" --> "1" BillerService : targets >
+Payment --> PaymentState : current state
+
+' Fees & Logic
+Payment --> FeeCalculator : uses
+FeeCalculator ..> FeeRule : applies >
+FraudPolicy ..> FraudDecision : produces >
+
+' Failures & Refunds
+Payment "0..1" --> "*" RefundRequest : may trigger >
+RefundRequest "1" --> "1" Wallet : refunds to >
+
+' Notifications
+Payment "1" --> "*" Notification : notifies >
+Account "1" --> "*" Notification : receives >
+
+' Reconciliation
+Biller "1" --> "*" BillerService : offers >
+Biller "1" --> "*" SettlementLine : provides >
+ReconciliationEngine ..> SettlementLine : compares >
+ReconciliationEngine ..> Payment : compares >
+
+' ============================================================
+' Notes
+' ============================================================
+note right of LedgerEntry
+  Single Source of Truth for money.
+  A Wallet's balance is calculated 
+  by summing its LedgerEntries.
+  "Holds" are just entries moving 
+  value from AVAILABLE to HELD.
+end note
+
+note bottom of FeeCalculator
+  A Domain Service. It does not belong to 
+  a single entity because calculating a fee 
+  requires looking at the Biller, the Payment, 
+  and the active FeeRules.
+end note
+
+@enduml

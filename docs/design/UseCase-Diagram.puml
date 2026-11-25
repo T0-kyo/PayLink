@@ -1,0 +1,146 @@
+@startuml PayLink_Use_Case_Diagram
+!theme plain
+left to right direction
+skinparam packageStyle rectangle
+skinparam usecase {
+  BackgroundColor #F8F9FA
+  BorderColor #333333
+  FontSize 13
+}
+skinparam actor {
+  BackgroundColor #E2E8F0
+  BorderColor #333333
+}
+
+title PayLink — Use Case Diagram (FR-1 to FR-28)
+
+' ============================================================
+' ACTORS
+' ============================================================
+actor "Customer" as Customer
+actor "Agent" as Agent
+actor "Admin" as Admin
+actor "Support" as Support
+actor "Biller (External)" as Biller
+actor "Scheduler (System)" as Scheduler
+actor "Notification Provider" as Notifier
+
+' ============================================================
+' SYSTEM BOUNDARY: Customer & Agent Features
+' ============================================================
+rectangle "PayLink Backend" {
+  
+  package "Accounts & Wallets" {
+    usecase "Register / Upgrade Account\n(FR-1, FR-2)" as UC_Register
+    usecase "View Balance & History\n(FR-3)" as UC_ViewBalance
+    usecase "Top Up Wallet\n(FR-4)" as UC_TopUp
+    usecase "Record Ledger Entry\n(FR-5)" as UC_Ledger
+  }
+
+  package "Billers & Payments" {
+    usecase "Browse Billers & Required Fields\n(FR-7)" as UC_BrowseBillers
+    usecase "Run Bill Inquiry\n(FR-8)" as UC_Inquiry
+    usecase "Pay Bill\n(FR-9, FR-11, FR-12, FR-15, FR-16)" as UC_PayBill
+    usecase "Enforce Idempotency\n(FR-10)" as UC_Idempotency
+    usecase "Run Fraud & Limit Checks\n(FR-18, FR-19)" as UC_Fraud
+    usecase "Hold Funds\n(FR-12)" as UC_Hold
+    usecase "Pay on Behalf of Customer\n(FR-17)" as UC_AgentPay
+    usecase "Earn Agent Commission\n(FR-17)" as UC_Commission
+  }
+
+  package "Customer Support & Admin" {
+    usecase "Search Payment by Ref\n(FR-20)" as UC_SearchPayment
+    usecase "Block / Unblock Account\n(FR-21)" as UC_BlockAccount
+    usecase "Manage Billers / Services\n(FR-6)" as UC_ManageBillers
+    usecase "Edit Fee & Limit Config\n(FR-24)" as UC_EditConfig
+    usecase "View Daily Totals\n(FR-28)" as UC_DailyTotals
+    usecase "View Audit Logs\n(FR-25)" as UC_AuditLog
+  }
+
+  package "Refunds & Async" {
+    usecase "Request Refund\n(FR-27)" as UC_RequestRefund
+    usecase "Approve Refund\n(FR-27)" as UC_ApproveRefund
+    usecase "Send SMS / Push\n(FR-22, FR-23)" as UC_Notify
+    usecase "Process Biller Callback\n(FR-14)" as UC_Callback
+  }
+
+  package "Background Operations" {
+    usecase "Retry Unknown Payments\n(FR-13)" as UC_Retry
+    usecase "Reconcile Settlement File\n(FR-26)" as UC_Reconcile
+  }
+}
+
+' ============================================================
+' ACTOR -> USE CASE RELATIONSHIPS
+' ============================================================
+
+' Customer
+Customer --> UC_Register
+Customer --> UC_ViewBalance
+Customer --> UC_TopUp
+Customer --> UC_BrowseBillers
+Customer --> UC_Inquiry
+Customer --> UC_PayBill
+Customer --> UC_RequestRefund
+
+' Agent
+Agent --> UC_AgentPay
+Agent --> UC_TopUp
+
+' Admin
+Admin --> UC_ManageBillers
+Admin --> UC_EditConfig
+Admin --> UC_DailyTotals
+Admin --> UC_AuditLog
+
+' Support
+Support --> UC_SearchPayment
+Support --> UC_BlockAccount
+Support --> UC_ApproveRefund
+
+' External / System Actors
+Biller --> UC_Callback
+Biller --> UC_Reconcile : provides file >
+Scheduler --> UC_Retry
+Scheduler --> UC_Reconcile
+Notifier --> UC_Notify : delivers >
+
+' ============================================================
+' USE CASE INCLUSIONS & EXTENSIONS (Internal Logic)
+' ============================================================
+
+' Payment Logic
+UC_PayBill .> UC_Idempotency : <<include>>
+UC_PayBill .> UC_Fraud : <<include>>
+UC_PayBill .> UC_Hold : <<include>>
+UC_PayBill .> UC_Ledger : <<include>>
+UC_PayBill .> UC_Notify : <<include>>
+
+' Agent Logic
+UC_AgentPay .> UC_PayBill : <<include>>
+UC_AgentPay .> UC_Commission : <<include>>
+
+' TopUp Logic
+UC_TopUp .> UC_Ledger : <<include>>
+
+' Refund Logic
+UC_ApproveRefund .> UC_RequestRefund : <<extend>>
+UC_ApproveRefund .> UC_Ledger : <<include>>
+
+' Retry Logic
+UC_Retry .> UC_Notify : <<include>>
+
+' ============================================================
+' NOTES FOR MISSING/INTERNAL FRs
+' ============================================================
+note right of UC_Reconcile
+  Covers FR-26: Nightly comparison.
+  Flags differences for Support.
+end note
+
+note bottom of UC_ManageBillers
+  Adding a biller (FR-15) only touches
+  this configuration and the integration adapter.
+end note
+
+@enduml
