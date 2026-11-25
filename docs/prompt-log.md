@@ -1,0 +1,15 @@
+# PayLink — AI Prompt Log
+
+**Repository Path:** `/docs/prompt-log.md`  
+**Purpose:** Tracks structured AI prompts used across requirements, design, implementation, testing, and DevOps, along with critical evaluations (`Accepted`, `Fixed`, `Rejected`) of every output.
+
+---
+
+## Phase 1 Prompt Log (Requirements, Design & DevOps Foundation)
+
+| Date | Author | Stage | Tool and model | Prompt | Summary of answer | Verdict (accepted, fixed, rejected) and why |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| 2026-11-25 | Youssef Hassib | Requirements | Gemini | "give me full lengthened context of what the problem is" followed by "make it 100-150 words" | Initially generated a ~310-word multi-paragraph problem summary covering PayLink's digital wallet, immutable decimal ledger, multi-biller protocols, and reconciliation, then condensed it to a 131-word executive summary in fresh wording. | **Fixed:** The initial 310-word summary was too verbose for the overview section; constrained the output to 100–150 words while retaining all core financial accuracy and multi-biller integration constraints. |
+| 2026-11-25 | Youssef Hassib | Requirements | Gemini | "moving onto stakeholders. I currently believe that the stakeholders can be (customers, agents, company billers)? what am I missing and why?" | Identified 5 missing stakeholder groups beyond basic customers, agents, and billers: Basic vs. Verified customer tiers, System Administrators, Customer Support Employees, Notification Gateway Providers, and Financial Regulators/Management. | **Accepted:** Expanded the stakeholder table to include all internal operators and external systems referenced in FR-1 through FR-28 so that the Requirements Pack and Use-Case diagram remain 100% consistent. |
+| 2026-11-25 | Youssef Hassib | Requirements | Gemini | "what are the ambiguities that me and my teammate must decide on ourselves? give a list numbered" followed by "in the third ambiguity, explain it further" | Listed 12 critical ambiguities in the student brief (daily limit scope, single-payment bounds, agent wallet debit vs. customer wallet debit, post-completion fee refunds, TopUpNet timeout vs. async callback, overlapping promotions, idempotency key scope) and broke down the agent wallet and 0-EGP promotion commission options. | **Fixed:** The initial summary left the agent payment debit flow open to two interpretations; requested a deeper breakdown and locked Option A (agent's pre-funded wallet is debited for walk-in cash payments, and commission is 0.00 EGP during zero-fee promotions) in our Decisions Log. |
+| 2026-11-25 | Youssef Hassib | Requirements | Gemini | "validate them fully and lets complete the rest from 14 to 28" and "give me fr14 till end in same md format" | Validated FR-1 through FR-13 against the brief's rules and generated FR-14 through FR-28 with MoSCoW priorities, `Given / When / Then` acceptance criteria, 6 measurable NFRs, and the 11-item Ambiguities & Decisions Log. | **Accepted:** Verified that all 28 functional requirements, all 8 hard cases from Section 2.7, and all 6 measurable NFR targets were covered without omitting any `Must` requirements. |

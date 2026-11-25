@@ -1,8 +1,8 @@
 # PayLink — Requirements Specification (Phase 1)
 
 **Repository Path:** `/docs/requirements.md`  
-**Authors:** Youssef Hassib & Ali Saied 
-**Declared Technology Stack:** [e.g.,.NET] + [e.g., PostgreSQL]  
+**Authors:** Youssef Hassib & Ali Saied & AlHussein Haytham & Ahmed Youssef
+**Declared Technology Stack:** [e.g.,.NET] 
 
 ---
 
